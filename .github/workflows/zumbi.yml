@@ -1,0 +1,38 @@
+name: Varrimento Zumbi Infinito
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 */6 * * *'
+
+jobs:
+  run-scanner:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar Codigo e ZIP Gigante
+        uses: actions/checkout@v3
+        with:
+          lfs: true
+
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Instalar Bibliotecas
+        run: pip install coincurve base58
+
+      - name: Correr o Scanner
+        env:
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+          EMAIL_DESTINO: ${{ secrets.EMAIL_DESTINO }}
+        run: python scanner.py
+
+      - name: Auto-Save
+        if: always()
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add checkpoint_magnitude.json HIT_PRIVATEKEYS_RANDOM.txt
+          git commit -m "Update [skip ci]" || echo "Sem alteracoes"
+          git push
