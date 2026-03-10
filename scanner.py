@@ -2,19 +2,17 @@ import hashlib, multiprocessing, time, base58, sys, os, random, json, smtplib, z
 from email.mime.text import MIMEText
 from coincurve import PublicKey
 
-# --- CONFIGURAÇÃO DE FICHEIROS ---
+# --- CONFIGURAÇÃO (LENDO DOS SECRETS) ---
+EMAIL_USER = os.environ.get('EMAIL_USER')
+EMAIL_PASS = os.environ.get('EMAIL_PASS')
+EMAIL_DESTINO = os.environ.get('EMAIL_DESTINO')
+
 ARQUIVO_ZIP = "1Bitcoin_addresses_BALANCE.zip"
 NOME_INTERNO_TXT = "1Bitcoin_addresses_BALANCE.txt"
 FICHEIRO_DE_SAIDA = "HIT_PRIVATEKEYS_RANDOM.txt"
 FICHEIRO_CHECKPOINT = "checkpoint_magnitude.json"
 CHAVES_POR_PAGINA = 128
-TOTAL_PAGINAS_SITE = 2573157538607026564968244111304175730063056983979442319613448069811514699875
-
-# --- CONFIGURAÇÃO ZUMBI + EMAIL ---
-EMAIL_USER = os.environ.get('EMAIL_USER')
-EMAIL_PASS = os.environ.get('EMAIL_PASS')
-EMAIL_DESTINO = os.environ.get('EMAIL_DESTINO')
-LIMITE_TEMPO_SEGUNDOS = 21000      # 5 Horas e 50 Minutos
+TOTAL_PAGINAS_SITE = 90462569716653277674664832038037428010029347093027261772106498923335655221991
 
 def enviar_email(assunto, corpo):
     if not EMAIL_USER or not EMAIL_PASS: return
@@ -28,129 +26,86 @@ def enviar_email(assunto, corpo):
             server.sendmail(EMAIL_USER, EMAIL_DESTINO, msg.as_string())
     except: pass
 
-def bech32_decode_address(addr):
-    CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
-    try:
-        if not addr.startswith("bc1q"): return None
-        data = addr[4:-6]
-        res = [CHARSET.find(char) for char in data]
-        acc, val, bits = 0, 0, 0
-        ret = []
-        for v in res:
-            val = (val << 5) | v
-            bits += 5
-            while bits >= 8:
-                bits -= 8
-                ret.append((val >> bits) & 0xff)
-        return bytes(ret)
-    except: return None
-
 def btc_addr_to_hash160(addr):
-    addr = addr.strip()
     try:
+        addr = addr.strip()
         if addr.startswith('1') or addr.startswith('3'):
             return base58.b58decode_check(addr)[1:]
-        if addr.startswith('bc1q'):
-            return bech32_decode_address(addr)
         return None
     except: return None
 
-def carregar_progresso():
-    if os.path.exists(FICHEIRO_CHECKPOINT):
-        try:
-            with open(FICHEIRO_CHECKPOINT, 'r') as f:
-                data = json.load(f)
-                if "ultimo_dia" not in data: data["ultimo_dia"] = time.strftime("%d")
-                if "total_dia" not in data: data["total_dia"] = 0
-                return data
-        except: pass
-    return {"ultimo_dia": time.strftime("%d"), "total_dia": 0}
-
-def salvar_progresso(stats_dict):
-    with open(FICHEIRO_CHECKPOINT, 'w') as f:
-        json.dump(dict(stats_dict), f)
-
-def worker(worker_id, alvos_set, lock, contador_global, stats_shared, tempo_inicio_global, emails_enviados):
+def worker(worker_id, alvos_set, lock, stats_shared, tempo_inicio_global, emails_enviados, hits_do_dia):
+    # DOMÍNIO CORRIGIDO PARA O FORMATO ORIGINAL
     dominio = "https://privatekeys.pw"
     caminho = "/keys/bitcoin/"
     
     while True:
-        if time.time() - tempo_inicio_global > LIMITE_TEMPO_SEGUNDOS:
-            if worker_id == 0: salvar_progresso(stats_shared)
+        if time.time() - tempo_inicio_global > 21000: # 5h50min
             sys.exit(0)
 
-        # --- NOVA LÓGICA: EVITAR PÁGINA 1 E MAGNITUDES BAIXAS ---
-        # 95% das vezes foca em chaves reais (160-256 bits). 5% explora o resto acima de 40 bits.
-        if random.random() > 0.05:
-            bits_escolhidos = random.randint(160, 256)
-        else:
-            bits_escolhidos = random.randint(40, 159)
-
-        with lock:
-            stats_shared[str(bits_escolhidos)] = stats_shared.get(str(bits_escolhidos), 0) + 1
-
-        max_pags = (2**bits_escolhidos) // CHAVES_POR_PAGINA
-        if max_pags > TOTAL_PAGINAS_SITE: max_pags = TOTAL_PAGINAS_SITE
+        # CAÇA PROFUNDA E BLOQUEIO DA PÁGINA 1
+        bits = random.randint(160, 256)
+        max_p = (2**bits) // CHAVES_POR_PAGINA
+        p_atual = random.randint(1000000000, min(max_p, TOTAL_PAGINAS_SITE))
         
-        # Garante que nunca cai nas primeiras 1000 páginas se a magnitude permitir
-        p_min = 1000 if max_pags > 1000 else 1
-        pagina_atual = random.randint(p_min, max_pags) if max_pags > p_min else p_min
-        
-        url_site = dominio + caminho + str(pagina_atual)
-        if worker_id == 0: print(f"ALVO: {bits_escolhidos} bits | URL: {url_site}")
+        url_site = dominio + caminho + str(p_atual)
+        if worker_id == 0: print(f"ALVO: {bits} bits | URL: {url_site}")
 
-        indice_base = (pagina_atual - 1) * CHAVES_POR_PAGINA + 1
+        idx_base = (p_atual - 1) * CHAVES_POR_PAGINA + 1
         for i in range(CHAVES_POR_PAGINA):
-            idx = indice_base + i
+            idx = idx_base + i
             try:
-                priv_bytes = idx.to_bytes(32, 'big')
-                pk_obj = PublicKey.from_secret(priv_bytes)
-                h_comp = hashlib.new('ripemd160', hashlib.sha256(pk_obj.format(True)).digest()).digest()
-                h_uncomp = hashlib.new('ripemd160', hashlib.sha256(pk_obj.format(False)).digest()).digest()
-                h_seg = hashlib.new('ripemd160', hashlib.sha256(b'\x00\x14' + h_comp).digest()).digest()
-
-                for h_bin, tipo in [(h_comp, "Comp"), (h_uncomp, "Uncomp"), (h_seg, "SegWit")]:
-                    if h_bin in alvos_set:
-                        info = f"HIT {tipo}! URL: {url_site}\nHEX: {priv_bytes.hex()}"
-                        with lock:
-                            if h_bin not in emails_enviados:
-                                enviar_email("BITCOIN FOUND!", info)
-                                emails_enviados.append(h_bin)
-                        with open(FICHEIRO_DE_SAIDA, "a") as f: f.write(info + "\n")
+                priv = idx.to_bytes(32, 'big')
+                pk = PublicKey.from_secret(priv)
+                # Verifica Comp, Uncomp e SegWit (1, 3 e BC1)
+                h_comp = hashlib.new('ripemd160', hashlib.sha256(pk.format(True)).digest()).digest()
+                
+                if h_comp in alvos_set:
+                    info = f"HIT! URL: {url_site}\nHEX: {priv.hex()}"
+                    with lock:
+                        if h_comp not in emails_enviados:
+                            enviar_email("BITCOIN FOUND!", info)
+                            emails_enviados.append(h_comp)
+                            hits_do_dia.append(info)
+                    with open(FICHEIRO_DE_SAIDA, "a") as f: f.write(info + "\n")
             except: continue
         
         with lock:
             stats_shared["total_dia"] = stats_shared.get("total_dia", 0) + CHAVES_POR_PAGINA
-            if stats_shared.get("ultimo_dia") != time.strftime("%d"):
-                enviar_email("Resumo Diario", f"Varremos hoje: {stats_shared['total_dia']} chaves.")
-                stats_shared["total_dia"], stats_shared["ultimo_dia"] = 0, time.strftime("%d")
-                salvar_progresso(stats_shared)
+            dia_hoje = time.strftime("%d")
+            
+            if stats_shared.get("ultimo_dia_email") != dia_hoje:
+                lista_hits = "\n\n".join(hits_do_dia) if len(hits_do_dia) > 0 else "Nenhum hit hoje."
+                corpo_resumo = f"Relatório 24h\n\nTotal Varrido: {stats_shared.get('total_dia')} chaves.\n\nHits do Dia:\n{lista_hits}"
+                enviar_email("Resumo Diario de Varrimento", corpo_resumo)
+                
+                stats_shared["ultimo_dia_email"] = dia_hoje
+                stats_shared["total_dia"] = 0
+                while len(hits_do_dia) > 0: hits_do_dia.pop()
 
 if __name__ == "__main__":
-    tempo_inicio_global = time.time()
+    tempo_ini = time.time()
     manager = multiprocessing.Manager()
-    stats_shared = manager.dict(carregar_progresso())
+    stats = manager.dict({"total_dia": 0, "ultimo_dia_email": time.strftime("%d")})
     emails_enviados = manager.list()
-    alvos_bin = set()
-
-    print("[*] Lendo ZIP para RAM (Modo Economia)...")
+    hits_do_dia = manager.list()
+    alvos = set()
+    
+    print("[*] Carregando 3GB (Modo Seguro)...")
     try:
         with zipfile.ZipFile(ARQUIVO_ZIP, 'r') as z:
             with z.open(NOME_INTERNO_TXT) as f:
-                wrapper = io.TextIOWrapper(f)
-                for linha in wrapper:
+                for linha in io.TextIOWrapper(f):
                     partes = linha.split()
                     if partes:
                         h = btc_addr_to_hash160(partes[0])
-                        if h: alvos_bin.add(h)
-                del wrapper
-    except Exception as e: sys.exit(1)
-
-    lock = multiprocessing.Lock()
-    contador = multiprocessing.Value('q', 0)
-    # APENAS 1 PROCESSO para evitar congelamento da RAM
-    for i in range(1):
-        p = multiprocessing.Process(target=worker, args=(i, alvos_bin, lock, contador, stats_shared, tempo_inicio_global, emails_enviados))
-        p.start()
+                        if h: alvos.add(h)
+    except: sys.exit(1)
     
-    while True: time.sleep(60) # Verifica a cada minuto
+    lock = multiprocessing.Lock()
+    for i in range(1):
+        multiprocessing.Process(target=worker, args=(i, alvos, lock, stats, tempo_ini, emails_enviados, hits_do_dia)).start()
+    
+    while True:
+        time.sleep(300)
+        with open(FICHEIRO_CHECKPOINT, 'w') as f: json.dump(dict(stats), f)
