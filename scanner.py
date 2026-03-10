@@ -10,15 +10,14 @@ FICHEIRO_CHECKPOINT = "checkpoint_magnitude.json"
 CHAVES_POR_PAGINA = 128
 TOTAL_PAGINAS_SITE = 2573157538607026564968244111304175730063056983979442319613448069811514699875
 
-# --- CONFIGURAÇÃO ZUMBI + EMAIL (LENDO DOS SECRETS) ---
+# --- CONFIGURAÇÃO ZUMBI + EMAIL ---
 EMAIL_USER = os.environ.get('EMAIL_USER')
 EMAIL_PASS = os.environ.get('EMAIL_PASS')
 EMAIL_DESTINO = os.environ.get('EMAIL_DESTINO')
 LIMITE_TEMPO_SEGUNDOS = 21000      # 5 Horas e 50 Minutos
 
 def enviar_email(assunto, corpo):
-    if not EMAIL_USER or not EMAIL_PASS:
-        return # Silencioso se não houver credenciais
+    if not EMAIL_USER or not EMAIL_PASS: return
     try:
         msg = MIMEText(corpo)
         msg['Subject'] = assunto
@@ -27,7 +26,7 @@ def enviar_email(assunto, corpo):
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
             server.login(EMAIL_USER, EMAIL_PASS)
             server.sendmail(EMAIL_USER, EMAIL_DESTINO, msg.as_string())
-    except: pass # Evita crashar o script se o Gmail bloquear
+    except: pass
 
 def bech32_decode_address(addr):
     CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
@@ -77,25 +76,28 @@ def worker(worker_id, alvos_set, lock, contador_global, stats_shared, tempo_inic
     
     while True:
         if time.time() - tempo_inicio_global > LIMITE_TEMPO_SEGUNDOS:
-            if worker_id == 0:
-                salvar_progresso(stats_shared)
+            if worker_id == 0: salvar_progresso(stats_shared)
             sys.exit(0)
 
-        todas_faixas = [str(b) for b in range(1, 257)]
+        # --- NOVA LÓGICA: EVITAR PÁGINA 1 E MAGNITUDES BAIXAS ---
+        # 95% das vezes foca em chaves reais (160-256 bits). 5% explora o resto acima de 40 bits.
+        if random.random() > 0.05:
+            bits_escolhidos = random.randint(160, 256)
+        else:
+            bits_escolhidos = random.randint(40, 159)
+
         with lock:
-            visitas = [stats_shared.get(f, 0) for f in todas_faixas if f not in ["ultimo_dia", "total_dia"]]
-            min_v = min(visitas) if visitas else 0
-            candidatas = [f for f in todas_faixas if stats_shared.get(f, 0) == min_v]
-            bits_escolhidos = int(random.choice(candidatas))
             stats_shared[str(bits_escolhidos)] = stats_shared.get(str(bits_escolhidos), 0) + 1
 
         max_pags = (2**bits_escolhidos) // CHAVES_POR_PAGINA
         if max_pags > TOTAL_PAGINAS_SITE: max_pags = TOTAL_PAGINAS_SITE
-        pagina_atual = random.randint(1, max_pags) if max_pags > 1 else 1
+        
+        # Garante que nunca cai nas primeiras 1000 páginas se a magnitude permitir
+        p_min = 1000 if max_pags > 1000 else 1
+        pagina_atual = random.randint(p_min, max_pags) if max_pags > p_min else p_min
+        
         url_site = dominio + caminho + str(pagina_atual)
-
-        if worker_id == 0:
-            print(f"BARRAL: {bits_escolhidos} bits | URL: {url_site}")
+        if worker_id == 0: print(f"ALVO: {bits_escolhidos} bits | URL: {url_site}")
 
         indice_base = (pagina_atual - 1) * CHAVES_POR_PAGINA + 1
         for i in range(CHAVES_POR_PAGINA):
@@ -110,12 +112,10 @@ def worker(worker_id, alvos_set, lock, contador_global, stats_shared, tempo_inic
                 for h_bin, tipo in [(h_comp, "Comp"), (h_uncomp, "Uncomp"), (h_seg, "SegWit")]:
                     if h_bin in alvos_set:
                         info = f"HIT {tipo}! URL: {url_site}\nHEX: {priv_bytes.hex()}"
-                        # --- TRAVA DE EMAIL (SÓ MANDA 1 POR ENDEREÇO/PÁGINA) ---
                         with lock:
                             if h_bin not in emails_enviados:
                                 enviar_email("BITCOIN FOUND!", info)
-                                emails_enviados.append(h_bin) # Marca como enviado
-                        
+                                emails_enviados.append(h_bin)
                         with open(FICHEIRO_DE_SAIDA, "a") as f: f.write(info + "\n")
             except: continue
         
@@ -130,24 +130,27 @@ if __name__ == "__main__":
     tempo_inicio_global = time.time()
     manager = multiprocessing.Manager()
     stats_shared = manager.dict(carregar_progresso())
-    emails_enviados = manager.list() # Lista partilhada para evitar emails repetidos
+    emails_enviados = manager.list()
     alvos_bin = set()
 
-    print("[*] Lendo 3GB diretamente do ZIP...")
+    print("[*] Lendo ZIP para RAM (Modo Economia)...")
     try:
         with zipfile.ZipFile(ARQUIVO_ZIP, 'r') as z:
             with z.open(NOME_INTERNO_TXT) as f:
-                for linha in io.TextIOWrapper(f):
+                wrapper = io.TextIOWrapper(f)
+                for linha in wrapper:
                     partes = linha.split()
                     if partes:
                         h = btc_addr_to_hash160(partes[0])
                         if h: alvos_bin.add(h)
+                del wrapper
     except Exception as e: sys.exit(1)
 
     lock = multiprocessing.Lock()
     contador = multiprocessing.Value('q', 0)
-    for i in range(2): # Usamos 2 núcleos para poupar RAM
+    # APENAS 1 PROCESSO para evitar congelamento da RAM
+    for i in range(1):
         p = multiprocessing.Process(target=worker, args=(i, alvos_bin, lock, contador, stats_shared, tempo_inicio_global, emails_enviados))
         p.start()
     
-    while True: time.sleep(10)
+    while True: time.sleep(60) # Verifica a cada minuto
