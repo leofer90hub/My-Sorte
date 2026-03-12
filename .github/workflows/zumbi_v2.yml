@@ -36,6 +36,6 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add checkpoint_magnitude.json HIT_V2.txt
+          git add checkpoint_v2.json HIT_V2.txt
           git commit -m "Update V2 [skip ci]" || echo "Sem alteracoes"
           git push
