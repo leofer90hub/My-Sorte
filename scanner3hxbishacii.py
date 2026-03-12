@@ -63,11 +63,27 @@ def run():
         m = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
         print("[*] Sniper Salada Russa ATIVO. Varrimento 1-256 bits iniciado.")
 
+        import sys # Adiciona no topo
+
+# ... (resto do código)
+
+        print("[*] Sniper Salada Russa ATIVO.")
+        sys.stdout.flush() # Força o GitHub a mostrar a mensagem agora
+
         while True:
-            # ENTROPIA VARIÁVEL: De 1 a 256 bits (aleatório ao calhas)
             bits = random.randint(1, 256)
             seed = os.urandom((bits + 7) // 8)
+            candidatos = processar_salada_completa(seed)
             
+            for pk in candidatos:
+                stats["count"] += 1
+                # ... (lógica de busca)
+                
+            # MOSTRAR PROGRESSO (A cada 100k chaves)
+            if stats["count"] % 100000 == 0:
+                print(f"[*] Varridas: {stats['count']} | Estabilidade: OK")
+                sys.stdout.flush() # FAZ O LOG APARECER NO GITHUB
+                
             candidatos = processar_salada_completa(seed)
             
             for pk in candidatos:
