@@ -86,9 +86,9 @@ def run():
                         with open("HITS_MUTANTE.txt", "a") as f: f.write(msg + "\n")
             except: continue
 
-        # Relatório 00:02
+                # Relatório 00:15
         now = datetime.now()
-        if now.hour == 0 and now.minute == 2 and stats["last_report"] != now.day:
+        if now.hour == 0 and now.minute == 15 and stats["last_report"] != now.day:
             enviar_alerta("Relatorio Sniper Mutante", f"Varridas: {stats['count']}")
             stats["last_report"] = now.day; stats["count"] = 0; time.sleep(60)
 
