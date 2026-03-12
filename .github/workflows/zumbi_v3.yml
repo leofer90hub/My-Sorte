@@ -1,28 +1,38 @@
 name: Varrimento Zumbi V3 hxbishacii
 on:
   schedule:
-    - cron: '0 */6 * * *'
-  workflow_dispatch:
+    - cron: '0 */6 * * *' # Backup: Tenta iniciar a cada 6 horas
+  workflow_dispatch:      # Permite iniciar manualmente
+  workflow_run:           # Reinicia automaticamente após terminar
+    workflows: ["zumbi_v3"]
+    types:
+      - completed
 
 jobs:
   sniper-session:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout Código (com LFS)
         uses: actions/checkout@v4
+        with:
+          lfs: true # <--- OBRIGATÓRIO para ficheiros >100MB no GitHub
 
-      - name: Setup Python
+      - name: Checkout LFS Objects
+        run: git lfs checkout # Garante que o ZIP real é baixado
+
+      - name: Configurar Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: Install Deps
+      - name: Instalar Dependências
         run: pip install bit
 
-      - name: Run Sniper
+      - name: Iniciar Sniper (Max 5h55m)
         env:
           EMAIL_USER: ${{ secrets.EMAIL_USER }}
           EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
           EMAIL_DESTINO: ${{ secrets.EMAIL_DESTINO }}
+        # O comando timeout garante que o script fecha limpo para o próximo ciclo
         run: |
-          timeout 355m python scanner3hxbishacii.py || echo "Fim da sessao"
+          timeout 355m python scanner3hxbishacii.py || echo "Sessão concluída para reinício automático."
