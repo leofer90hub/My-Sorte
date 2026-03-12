@@ -1,0 +1,38 @@
+name: Varrimento Zumbi V4 mirrorinver0110
+on:
+  schedule:
+    - cron: '0 */6 * * *' # Backup para iniciar a cada 6 horas caso o loop falhe
+  workflow_dispatch:      # Permite iniciar manualmente a primeira vez
+  workflow_run:           # O GATILHO: Reinicia assim que a execução anterior termina
+    workflows: ["zumbi_v4"]
+    types:
+      - completed
+
+jobs:
+  sniper-session:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Código (com LFS)
+        uses: actions/checkout@v4
+        with:
+          lfs: true # Necessário para o teu ZIP de 1.3GB
+
+      - name: Checkout LFS Objects
+        run: git lfs checkout # Garante que o ficheiro real é baixado
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Instalar Dependências
+        run: pip install bit
+
+      - name: Run Sniper Mutante (Max Duration)
+        env:
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+          EMAIL_DESTINO: ${{ secrets.EMAIL_DESTINO }}
+        # O timeout de 355m (5h55) garante que o processo fecha limpo para o auto-restart
+        run: |
+          timeout 355m python scanner4mirrorinver0110.py || echo "Sessão terminada para reinício automático."
