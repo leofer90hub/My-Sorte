@@ -1,7 +1,7 @@
-import os, hashlib, random, time, smtplib, zipfile, binascii
+import os, hashlib, random, time, smtplib, zipfile, binascii, sys
 from datetime import datetime
 from email.mime.text import MIMEText
-from bit import Key 
+from bit import Key # Requer: pip install bit
 
 # --- CONFIGURAÇÃO ---
 EMAIL_USER = os.getenv("EMAIL_USER")
@@ -34,7 +34,6 @@ def mutacao_total(bits_str):
     candidatos.append(h_bin_mirror)
     
     # 3. Inversão Decimal (Mirror decimal: 123 -> 321)
-    # Simula erro de leitura de base decimal
     dec_str_rev = str(val_dec)[::-1]
     h_dec_rev = hashlib.sha256(dec_str_rev.encode()).hexdigest()
     candidatos.append(h_dec_rev)
@@ -48,17 +47,18 @@ def mutacao_total(bits_str):
     # 5. SHA256 do Decimal Puro (O contra-ataque padrão)
     candidatos.append(hashlib.sha256(str(val_dec).encode()).hexdigest())
 
-    return list(set(candidatos)) # Remove duplicados
+    return list(set(candidatos))
 
 def run():
-    print("[*] Carregando 3GB de Balances (RAM Set)...")
+    print("[*] Carregando 3GB de Balances (RAM Set)..."); sys.stdout.flush()
     try:
         with zipfile.ZipFile(ZIP_NAME, 'r') as z:
             with z.open(TXT_NAME) as f:
+                # Carregar para SET para velocidade máxima na RAM
                 balances = set(line.strip().decode() for line in f)
-        print(f"[*] Sniper Mutante Ativo. {len(balances)} alvos carregados.")
+        print(f"[*] Sniper Mutante Ativo. {len(balances)} alvos carregados."); sys.stdout.flush()
     except Exception as e:
-        print(f"Erro: {e}"); return
+        print(f"Erro: {e}"); sys.stdout.flush(); return
 
     while True:
         # Gera semente binária aleatória (1-256 bits)
@@ -67,10 +67,19 @@ def run():
         
         for pk in mutacao_total(bits):
             stats["count"] += 1
+            
+            # MOSTRAR PROGRESSO (A cada 100k chaves)
+            if stats["count"] % 100000 == 0:
+                print(f"[*] Mutante Varridas: {stats['count']} | OK | {datetime.now().strftime('%H:%M:%S')}")
+                sys.stdout.flush()
+
             try:
                 k = Key.from_hex(pk)
-                # Testa Legacy (1), SegWit (3), Bech32 (bc1) e Uncompressed
-                for a in [k.address, k.segwit_address, k.address_uncompressed]:
+                # Testa Legacy (1), SegWit P2SH (3), Bech32 (bc1) e Uncompressed
+                # Nested SegWit (3) é gerado por k.to_nested_p2sh_address()
+                addrs = [k.address, k.segwit_address, k.address_uncompressed, k.to_nested_p2sh_address()]
+                
+                for a in addrs:
                     if a in balances:
                         msg = f"!!! HIT MUTANTE !!!\nPrivKey: {pk}\nAddr: {a}\nBits: {len(bits)}"
                         enviar_alerta("BITCOIN FOUND - MUTANTE", msg)
