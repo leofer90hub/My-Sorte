@@ -75,14 +75,14 @@ def worker(worker_id, alvos_set, lock, stats_shared, tempo_inicio_global, emails
                         with open(FICHEIRO_DE_SAIDA, "a") as f: f.write(info + "\n")
             except: continue
         
-        with lock:
+                with lock:
             stats_shared["total_dia"] = stats_shared.get("total_dia", 0) + CHAVES_POR_PAGINA
             
-            # --- ENVIO DO RELATÓRIO ÀS 00:01 ---
+            # --- ENVIO DO RELATÓRIO ÀS 00:05 ---
             agora = time.strftime("%H:%M")
             dia_hoje = time.strftime("%d")
             
-            if agora == "00:01" and stats_shared.get("ultimo_dia_email") != dia_hoje:
+            if agora == "00:05" and stats_shared.get("ultimo_dia_email") != dia_hoje:
                 lista_hits = "\n\n".join(hits_do_dia) if len(hits_do_dia) > 0 else "Nenhum hit hoje."
                 corpo_resumo = f"Relatório 24h\n\nTotal Varrido: {stats_shared.get('total_dia')} chaves.\n\nHits do Dia:\n{lista_hits}"
                 enviar_email("Resumo Diario de Varrimento", corpo_resumo)
