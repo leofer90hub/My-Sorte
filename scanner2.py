@@ -75,7 +75,7 @@ def worker(worker_id, alvos_set, lock, stats_shared, tempo_inicio_global, emails
                         with open(FICHEIRO_DE_SAIDA, "a") as f: f.write(info + "\n")
             except: continue
         
-                with lock:
+        with lock:
             stats_shared["total_dia"] = stats_shared.get("total_dia", 0) + CHAVES_POR_PAGINA
             
             # --- ENVIO DO RELATÓRIO ÀS 00:05 ---
