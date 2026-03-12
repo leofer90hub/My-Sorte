@@ -1,12 +1,8 @@
 name: Zumbi Sniper Infinite Loop
 on:
   schedule:
-    - cron: '0 */6 * * *' # Backup: Tenta iniciar a cada 6 horas caso o loop falhe
-  workflow_dispatch:      # Permite-te iniciar manualmente a primeira vez
-  workflow_run:           # O SEGREDO: Reinicia assim que a execução anterior termina
-    workflows: ["Zumbi Sniper Infinite Loop"]
-    types:
-      - completed
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
 
 jobs:
   sniper-session:
@@ -23,12 +19,10 @@ jobs:
       - name: Install Deps
         run: pip install bit
 
-      - name: Run Sniper (Max Duration)
+      - name: Run Sniper
         env:
           EMAIL_USER: ${{ secrets.EMAIL_USER }}
           EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
           EMAIL_DESTINO: ${{ secrets.EMAIL_DESTINO }}
-        # timeout-minutes garante que o processo para aos 355 min (5h55)
-        # permitindo que o GitHub salve os logs antes do hard-kill de 6h
         run: |
-          timeout 355m python scanner3hxbishacii.py || echo "Sessão terminada para reinício."
+          timeout 355m python scanner3hxbishacii.py || echo "Fim da sessao"
