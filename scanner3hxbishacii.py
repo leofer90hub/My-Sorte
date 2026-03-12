@@ -1,4 +1,4 @@
-import os, hashlib, random, time, smtplib, zipfile, mmap, binascii
+import os, hashlib, random, time, smtplib, zipfile, mmap, binascii, sys
 from datetime import datetime
 from email.mime.text import MIMEText
 from bit import Key # Requer: pip install bit
@@ -50,44 +50,34 @@ def processar_salada_completa(seed_bytes):
     ]
 
 def run():
-    print("[*] Extraindo base de dados...")
+    print("[*] Extraindo base de dados..."); sys.stdout.flush()
     with zipfile.ZipFile(ZIP_NAME, 'r') as z:
         z.extract(TXT_NAME)
 
     # Ordenação automática para garantir que a Busca Binária funcione
-    print("[*] Verificando ordenação (Plug & Play)...")
+    print("[*] Verificando ordenação (Plug & Play)..."); sys.stdout.flush()
     os.system(f"sort -u {TXT_NAME} -o {TXT_NAME}")
 
     with open(TXT_NAME, "rb") as f:
         # Mapeia o ficheiro de 3GB para busca instantânea usando 0 RAM
         m = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
-        print("[*] Sniper Salada Russa ATIVO. Varrimento 1-256 bits iniciado.")
-
-        import sys # Adiciona no topo
-
-# ... (resto do código)
-
-        print("[*] Sniper Salada Russa ATIVO.")
-        sys.stdout.flush() # Força o GitHub a mostrar a mensagem agora
+        print("[*] Sniper Salada Russa ATIVO. Varrimento 1-256 bits iniciado."); sys.stdout.flush()
 
         while True:
+            # ENTROPIA VARIÁVEL: De 1 a 256 bits (aleatório ao calhas)
             bits = random.randint(1, 256)
             seed = os.urandom((bits + 7) // 8)
+            
             candidatos = processar_salada_completa(seed)
             
             for pk in candidatos:
                 stats["count"] += 1
-                # ... (lógica de busca)
                 
-            # MOSTRAR PROGRESSO (A cada 100k chaves)
-            if stats["count"] % 100000 == 0:
-                print(f"[*] Varridas: {stats['count']} | Estabilidade: OK")
-                sys.stdout.flush() # FAZ O LOG APARECER NO GITHUB
-                
-            candidatos = processar_salada_completa(seed)
-            
-            for pk in candidatos:
-                stats["count"] += 1
+                # MOSTRAR PROGRESSO (A cada 100k chaves varridas)
+                if stats["count"] % 100000 == 0:
+                    print(f"[*] Varridas: {stats['count']} | Estabilidade: OK | {datetime.now().strftime('%H:%M:%S')}")
+                    sys.stdout.flush()
+
                 try:
                     # Gerador Multiformato (bc1, 1, 3, Comp/Uncomp)
                     k = Key.from_hex(pk)
