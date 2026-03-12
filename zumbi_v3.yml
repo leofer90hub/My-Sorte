@@ -1,0 +1,28 @@
+name: Zumbi Sniper Infinite Loop
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  sniper-session:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Deps
+        run: pip install bit
+
+      - name: Run Sniper
+        env:
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+          EMAIL_DESTINO: ${{ secrets.EMAIL_DESTINO }}
+        run: |
+          timeout 355m python scanner3hxbishacii.py || echo "Fim da sessao"
