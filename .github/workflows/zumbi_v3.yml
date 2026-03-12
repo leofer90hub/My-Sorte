@@ -1,4 +1,4 @@
-name: Zumbi Sniper Infinite Loop
+name: Varrimento Zumbi V3
 on:
   schedule:
     - cron: '0 */6 * * *'
