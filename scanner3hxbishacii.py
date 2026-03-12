@@ -89,9 +89,9 @@ def run():
                             enviar_alerta("SALADA_RUSSA_COMPLETA", pk, a)
                 except: continue
 
-            # Relatório diário às 00:02
+                        # Relatório diário às 00:10
             agora = datetime.now()
-            if agora.hour == 0 and agora.minute == 2 and stats["last_report"] != agora.day:
+            if agora.hour == 0 and agora.minute == 10 and stats["last_report"] != agora.day:
                 enviar_alerta("STATUS_DIARIO", f"Chaves varridas nesta sessao: {stats['count']}", "N/A")
                 stats["last_report"] = agora.day
                 stats["count"] = 0
