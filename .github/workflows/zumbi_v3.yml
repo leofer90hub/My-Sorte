@@ -1,4 +1,4 @@
-name: Varrimento Zumbi V3
+name: Varrimento Zumbi V3 hxbishacii
 on:
   schedule:
     - cron: '0 */6 * * *'
